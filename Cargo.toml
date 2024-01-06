@@ -1,0 +1,18 @@
+[package]
+name = "fhash"
+version = "0.2.0"
+edition = "2021"
+authors = ["EngusMaze"]
+description = "Blazingly fast hash for HashMaps in Rust"
+tags = ["hasher", "hash", "hashmap"]
+repository = "https://github.com/engusmaze/fhash"
+homepage = "https://github.com/engusmaze/fhash"
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
+
+[dependencies]
+frand = "0.8.1"
+
+[dev-dependencies]
+ahash = "0.8.7"
+hashbrown = "0.14.3"
