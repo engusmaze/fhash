@@ -53,6 +53,7 @@ impl Hasher for FHasher {
     }
 }
 
+#[derive(Default)]
 pub struct DefaultFHasherBuilder;
 impl BuildHasher for DefaultFHasherBuilder {
     type Hasher = FHasher;
