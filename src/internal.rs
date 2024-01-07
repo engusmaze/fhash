@@ -1,87 +1,79 @@
-const PRIME_A: u64 = 10489087524697319597;
-const PRIME_B: u64 = 15723408691975468189;
+// This code implements a custom hash function in Rust, using mixing and finalization operations.
+// It includes helper functions for mixing two or three u64 integers and a function to hash byte sequences.
 
+/// A prime number, the secret sauce for our hashing recipe!
+pub const PRIME: u64 = 15422943418517532487;
+
+/// Perform finalization on the hash
 #[inline(always)]
-pub fn finish(mut value: u64) -> u64 {
-    value = (value ^ value >> 32).wrapping_mul(PRIME_B);
-    value ^ value >> 32
+pub fn finish(mut hash: u64) -> u64 {
+    hash = (hash ^ hash >> 32).wrapping_mul(PRIME);
+    hash ^ hash >> 32
 }
 
+/// Mix two u64 integers using addition and XOR
 #[inline(always)]
-pub fn mix_u64(a: u64) -> u64 {
-    a.wrapping_mul(PRIME_A) ^ PRIME_B
+pub fn mix2(a: u64, b: u64) -> u64 {
+    a.wrapping_add(PRIME) ^ b
+}
+/// Mix three u64 integers using addition and XOR
+#[inline(always)]
+pub fn mix3(a: u64, b: u64, c: u64) -> u64 {
+    a.wrapping_add(PRIME) ^ b.wrapping_add(c) ^ c
 }
 
+/// Mix hash with byte slice
 #[inline(always)]
-pub fn mix_u64x2(a: u64, b: u64) -> u64 {
-    a.wrapping_mul(PRIME_A) ^ b.wrapping_mul(PRIME_B)
-}
-
-#[inline(always)]
-pub fn mix_u64x3(a: u64, b: u64, c: u64) -> u64 {
-    a.wrapping_mul(PRIME_A) ^ b.wrapping_mul(PRIME_A) ^ c.wrapping_mul(PRIME_B)
-}
-
-#[inline(always)]
-pub fn mix_u64x3_b(a: u64, b: u64, c: u64) -> u64 {
-    a.wrapping_mul(PRIME_A) ^ b.wrapping_mul(PRIME_B) ^ c.wrapping_mul(PRIME_B)
-}
-
-#[inline(always)]
-// #[no_mangle]
-pub fn mix_with_bytes(hash: &mut u64, bytes: &[u8]) {
-    let bytes_ptr = bytes.as_ptr();
-    let bytes_end = bytes.as_ptr().wrapping_add(bytes.len());
-
-    macro_rules! read_end {
-        ($ty: ty) => {{
-            (
-                bytes_ptr.cast::<$ty>().read_unaligned() as u64,
-                bytes_end.cast::<$ty>().wrapping_sub(1).read_unaligned() as u64,
-            )
-        }};
-    }
-
+pub fn mix_with_bytes(hash: u64, bytes: &[u8]) -> u64 {
     unsafe {
+        let mut hash = mix2(hash, bytes.len() as u64);
+        let ptr = bytes.as_ptr();
+        let end = ptr.wrapping_add(bytes.len());
         if bytes.len() > 16 {
-            *hash = mix_u64x2(*hash, bytes.len() as u64);
-            let mut u128_ptr = bytes_ptr.cast::<u128>();
-            let u128_end = bytes_end.cast::<u128>().wrapping_sub(1);
-            let value = u128_end.read_unaligned();
-            *hash = mix_u64x3_b(*hash, value as u64, (value >> 64) as u64);
+            let mut u64_ptr = ptr.cast::<(u64, u64)>();
+            let u64_end = end.cast::<(u64, u64)>().wrapping_sub(1);
+
+            // Read the tail right away so we don't have to take care of it later on
+            let (l, r) = u64_end.read_unaligned();
+            hash = mix3(hash, l, r);
+
+            // Read all the u64 pairs from start
             loop {
-                let value = u128_ptr.read_unaligned();
-                *hash = mix_u64x3(*hash, value as u64, (value >> 64) as u64);
-                u128_ptr = u128_ptr.wrapping_add(1);
-                if u128_ptr < u128_end {
+                let (l, r) = u64_end.read_unaligned();
+                hash = mix3(hash, l, r);
+                u64_ptr = u64_ptr.wrapping_add(1);
+                if u64_ptr < u64_end {
                     continue;
                 }
-                break;
+                break hash;
             }
         } else {
-            *hash = mix_u64x3(
-                *hash,
-                if bytes.len() <= 8 {
-                    if bytes.len() == 0 {
-                        PRIME_A
-                    } else {
-                        let (l, r) = if bytes.len() <= 2 {
-                            read_end!(u8)
-                        } else {
-                            if bytes.len() <= 4 {
-                                read_end!(u16)
-                            } else {
-                                read_end!(u32)
-                            }
-                        };
-                        l | r << 32
-                    }
-                } else {
-                    let (l, r) = read_end!(u64);
-                    mix_u64x2(l, r)
-                },
-                bytes.len() as u64,
-            );
+            // If the byte slice is smaller than or equal to 16 bytes, we have
+            // to determine the appropriate integer size to read and hash
+
+            /// Helper function to read different-sized integers from the byte slice
+            unsafe fn read_lr<T: Into<u64>>(ptr: *const u8, end: *const u8) -> (u64, u64) {
+                (
+                    ptr.cast::<T>().read_unaligned().into(),
+                    end.cast::<T>().wrapping_sub(1).read_unaligned().into(),
+                )
+            }
+
+            // Determine the input hash based on the byte chunk length and mix3
+            // the values with the use of the best if else practices
+            let (l, r) = if bytes.len() == 0 {
+                (PRIME, PRIME)
+            } else if bytes.len() <= 2 {
+                read_lr::<u8>(ptr, end)
+            } else if bytes.len() <= 4 {
+                read_lr::<u16>(ptr, end)
+            } else if bytes.len() <= 8 {
+                read_lr::<u32>(ptr, end)
+            } else {
+                read_lr::<u64>(ptr, end)
+            };
+
+            mix3(hash, l, r)
         }
     }
 }
