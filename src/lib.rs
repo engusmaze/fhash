@@ -106,6 +106,12 @@ impl Hasher for FHasher {
 pub struct RandomState {
     state: u64,
 }
+impl RandomState {
+    #[inline(always)]
+    pub const fn with_seed(seed: u64) -> Self {
+        Self { state: seed }
+    }
+}
 #[cfg(feature = "std")]
 impl Default for RandomState {
     /// Creates a new RandomState with state seeded from current time.
